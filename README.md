@@ -1,4 +1,4 @@
-## Faster-Rcnn：Two-Stage目标检测模型在Pytorch当中的实现
+## Faster-Rcnn：PCB-component-defect-detection目标检测模型在Pytorch当中的实现
 ---
 
 ## 目录
@@ -12,16 +12,15 @@
 8. [参考资料 Reference](#Reference)
 
 ## Top News
-**`2022-04`**:**进行了大幅度的更新，支持step、cos学习率下降法、支持adam、sgd优化器选择、支持学习率根据batch_size自适应调整、新增图片裁剪。**   
-BiliBili视频中的原仓库地址为：https://github.com/bubbliiiing/faster-rcnn-pytorch/tree/bilibili
-
-**`2021-10`**:**进行了大幅度的更新，增加了大量注释、增加了大量可调整参数、对代码的组成模块进行修改、增加fps、视频预测、批量预测等功能。**   
+**本项目支持step、cos学习率下降法、支持adam、sgd优化器选择、支持学习率根据batch_size自适应调整、新增图片裁剪。**   
+**增加了大量注释、增加了大量可调整参数、对代码的组成模块进行修改、增加fps、视频预测、批量预测等功能。**   
 
 ## 性能情况
 | 训练数据集 | 权值文件名称 | 测试数据集 | 输入图片大小 | mAP 0.5:0.95 | mAP 0.5 |
 | :-----: | :-----: | :------: | :------: | :------: | :-----: |
 | VOC07+12 | [voc_weights_resnet.pth](https://github.com/bubbliiiing/faster-rcnn-pytorch/releases/download/v1.0/voc_weights_resnet.pth) | VOC-Test07 | - | - | 80.36
 | VOC07+12 | [voc_weights_vgg.pth](https://github.com/bubbliiiing/faster-rcnn-pytorch/releases/download/v1.0/voc_weights_vgg.pth) | VOC-Test07 | - | - | 77.46
+**本代码中也用训练权重，读者可以不用下载。
 
 ## 所需环境
 torch == 1.2.0
@@ -36,6 +35,8 @@ voc_weights_vgg.pth是vgg为主干特征提取网络用到的；
 VOC数据集下载地址如下，里面已经包括了训练集、测试集、验证集（与测试集一样），无需再次划分：  
 链接: https://pan.baidu.com/s/1YuBbBKxm2FGgTU5OfaeC5A    
 提取码: uack   
+**笔者是使用生产工厂，现场采集的PCB图片，故不能上传，读者需要自备数据集或者根据提供的数据集链接下载
+**在后续中，笔者以共用数据集VOC07+12数据集进行讲解，
 
 ## 训练步骤
 ### a、训练VOC07+12数据集
@@ -92,44 +93,14 @@ img/street.jpg
 2. 在predict.py里面进行设置可以进行fps测试和video视频检测。  
 ### b、使用自己训练的权重
 1. 按照训练步骤训练。  
-2. 在frcnn_predict.py文件里面，在如下部分修改model_path和classes_path使其对应训练好的文件；**model_path对应logs文件夹下面的权值文件，classes_path是model_path对应分的类**。  
-```python
-_defaults = {
-    #--------------------------------------------------------------------------#
-    #   使用自己训练好的模型进行预测一定要修改model_path和classes_path！
-    #   model_path指向logs文件夹下的权值文件，classes_path指向model_data下的txt
-    #   如果出现shape不匹配，同时要注意训练时的model_path和classes_path参数的修改
-    #--------------------------------------------------------------------------#
-    "model_path"    : 'model_data/voc_weights_resnet.pth',
-    "classes_path"  : 'model_data/voc_classes.txt',
-    #---------------------------------------------------------------------#
-    #   网络的主干特征提取网络，resnet50或者vgg
-    #---------------------------------------------------------------------#
-    "backbone"      : "resnet50",
-    #---------------------------------------------------------------------#
-    #   只有得分大于置信度的预测框会被保留下来
-    #---------------------------------------------------------------------#
-    "confidence"    : 0.5,
-    #---------------------------------------------------------------------#
-    #   非极大抑制所用到的nms_iou大小
-    #---------------------------------------------------------------------#
-    "nms_iou"       : 0.3,
-    #---------------------------------------------------------------------#
-    #   用于指定先验框的大小
-    #---------------------------------------------------------------------#
-    'anchors_size'  : [8, 16, 32],
-    #-------------------------------#
-    #   是否使用Cuda
-    #   没有GPU可以设置成False
-    #-------------------------------#
-    "cuda"          : True,
-}
-```
+2. 在frcnn_predict.py文件里面，在如下部分修改model_path和classes_path使其对应训练好的文件；**model_path对应logs文件夹下面的权值文件，classes_path是model_path对应分的类**。 
+
+
 3. 运行predict.py，输入  
 ```python
 img/street.jpg
 ```
-4. 在predict.py里面进行设置可以进行fps测试和video视频检测。  
+4.在predict.py里面进行设置可以进行fps测试和video视频检测。  
 
 ## 评估步骤 
 ### a、评估VOC07+12的测试集
@@ -143,8 +114,3 @@ img/street.jpg
 3. 利用voc_annotation.py划分测试集后，前往get_map.py文件修改classes_path，classes_path用于指向检测类别所对应的txt，这个txt和训练时的txt一样。评估自己的数据集必须要修改。
 4. 在frcnn_predict.py里面修改model_path以及classes_path。**model_path指向训练好的权值文件，在logs文件夹里。classes_path指向检测类别所对应的txt。**  
 5. 运行get_map.py即可获得评估结果，评估结果会保存在map_out文件夹中。
-
-## Reference
-https://github.com/chenyuntc/simple-faster-rcnn-pytorch  
-https://github.com/eriklindernoren/PyTorch-YOLOv3  
-https://github.com/BobLiu20/YOLOv3_PyTorch  
