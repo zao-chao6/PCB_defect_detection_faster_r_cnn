@@ -1,18 +1,17 @@
 #-------------------------------------#
 #       对数据集进行训练
 #-------------------------------------#
-import os
 import datetime
+import os
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-
-from nets.faster_rcnn_feature_extraction import FasterRCNN
-from nets.frcnn_training import (FasterRCNNTrainer, get_lr_scheduler,
+from nets.FasterRCNN_train import FasterRCNN
+from nets.Suggestion_box import (FasterRCNNTrainer, FasterRCNNTrainer_fpn, get_lr_scheduler,
                                  set_optimizer_lr, weights_init)
+from torch.utils.data import DataLoader
 from utils.callbacks import EvalCallback, LossHistory
 from utils.dataloader import FRCNNDataset, frcnn_dataset_collate
 from utils.utils import get_classes, show_config
@@ -37,9 +36,9 @@ from utils.utils_fit import fit_one_epoch
 if __name__ == "__main__":
     #-------------------------------#
     #   是否使用Cuda
-    #   没有GPU可以设置成False
+    #   没有GPU可以设置成False/True
     #-------------------------------#
-    Cuda            = True
+    Cuda = True
     #---------------------------------------------------------------------#
     #   train_gpu   训练用到的GPU
     #               默认为第一张卡、双卡为[0, 1]、三卡为[0, 1, 2]
@@ -50,13 +49,14 @@ if __name__ == "__main__":
     #   fp16        是否使用混合精度训练
     #               可减少约一半的显存、需要pytorch1.7.1以上
     #---------------------------------------------------------------------#
-    fp16            = False
+    fp16            = False    
     # fp16            = True   #服务器上使用
     #---------------------------------------------------------------------#
     #   classes_path    指向model_data下的txt，与自己训练的数据集相关 
     #                   训练前一定要修改classes_path，使其对应自己的数据集
     #---------------------------------------------------------------------#
-    classes_path    = r'PCB_DataSet\cls_classes.txt'
+    classes_path = r'F:\Desktop\PCB_code\PCB_DataSet\cls_classes.txt'  # 本地运行代码
+    # classes_path    = 'autodl-tmp/PCB_DataSet/cls_classes.txt'   #服务器上运行代码
     #----------------------------------------------------------------------------------------------------------------------------#
     #   权值文件的下载请看README，可以通过网盘下载。模型的 预训练权重 对不同数据集是通用的，因为特征是通用的。
     #   模型的 预训练权重 比较重要的部分是 主干特征提取网络的权值部分，用于进行特征提取。
@@ -74,7 +74,8 @@ if __name__ == "__main__":
     #   一般来讲，网络从0开始的训练效果会很差，因为权值太过随机，特征提取效果不明显，因此非常、非常、非常不建议大家从0开始训练！
     #   如果一定要从0开始，可以了解imagenet数据集，首先训练分类模型，获得网络的主干部分权值，分类模型的 主干部分 和该模型通用，基于此进行训练。
     #----------------------------------------------------------------------------------------------------------------------------#
-    model_path      = r'faster-rcnn-pytorch-master\model_data\voc_weights_resnet.pth'
+    model_path = r'F:\Desktop\PCB_code\faster-rcnn-pytorch-master\model_data\voc_weights_resnet.pth'  # 本地运行代码模型路径
+    # model_path      = 'autodl-tmp/faster-rcnn-pytorch-master/model_data/voc_weights_resnet.pth'   #服务器上运行代码模型路径
     #------------------------------------------------------#
     #   input_shape     输入的shape大小
     #------------------------------------------------------#
@@ -82,9 +83,11 @@ if __name__ == "__main__":
     #---------------------------------------------#
     #   vgg
     #   resnet50
-    # resnet101
-    #---------------------------------------------#
-    backbone        = "resnet101"
+    #   resnet101
+    #   resnet50_FPN
+    # ---------------------------------------------#
+    # backbone        = "resnet50"
+    backbone        = "resnet50_FPN"
     #----------------------------------------------------------------------------------------------------------------------------#
     #   pretrained      是否使用主干网络的预训练权重，此处使用的是主干的权重，因此是在模型构建的时候进行加载的。
     #                   如果设置了model_path，则主干的权值无需加载，pretrained的值无意义。
@@ -92,6 +95,7 @@ if __name__ == "__main__":
     #                   如果不设置model_path，pretrained = False，Freeze_Train = Fasle，此时从0开始训练，且没有冻结主干的过程。
     #----------------------------------------------------------------------------------------------------------------------------#
     pretrained      = False
+    # pretrained = r'F:\Desktop\PCB_code\faster-rcnn-pytorch-master\model_data\fasterrcnn_resnet50_fpn_coco.pth'
     #------------------------------------------------------------------------#
     #   anchors_size用于设定先验框的大小，每个特征点均存在9个先验框。
     #   anchors_size每个数对应3个先验框。
@@ -101,8 +105,10 @@ if __name__ == "__main__":
     #   [720, 360]; 详情查看anchors.py
     #   如果想要检测小物体，可以减小anchors_size靠前的数。
     #   比如设置anchors_size = [4, 16, 32]
+    #   加入fpn网络后，因为在rpn阶段有p2~p6层，故anchors_size=[(32,), (64,), (128,), (256,), (512,)]
     #------------------------------------------------------------------------#
-    anchors_size    = [4, 16, 32]
+    # anchors_size    = [4, 16, 32]
+    anchors_size    = [4, 16, 32,64,128]
 
     #----------------------------------------------------------------------------------------------------------------------------#
     #   训练分为两个阶段，分别是冻结阶段和解冻阶段。设置冻结阶段是为了满足机器性能不足的同学的训练需求。
@@ -157,15 +163,15 @@ if __name__ == "__main__":
     #   Unfreeze_batch_size     模型在解冻后的batch_size
     #------------------------------------------------------------------#
     UnFreeze_Epoch      = 100
-    Unfreeze_batch_size = 1
-    # Unfreeze_batch_size = 24
+    Unfreeze_batch_size = 2     #本地电脑使用
+    # Unfreeze_batch_size = 24  #服务器上使用
     #------------------------------------------------------------------#
     #   Freeze_Train    是否进行冻结训练
     #                   默认先冻结主干训练后解冻训练。
     #                   如果设置Freeze_Train=False，建议使用优化器为sgd
     #------------------------------------------------------------------#
-    # Freeze_Train        = True
-    Freeze_Train        = False  #服务器上不用冻结训练
+    Freeze_Train        = True
+    # Freeze_Train        = False  #服务器上/内存大，不用冻结训练，
     
     #------------------------------------------------------------------#
     #   其它训练参数：学习率、优化器、学习率下降有关
@@ -191,9 +197,9 @@ if __name__ == "__main__":
     weight_decay        = 0
     #------------------------------------------------------------------#
     #   lr_decay_type   使用到的学习率下降方式，可选的有'step'、'cos'
+    #                   通过实验测试，step方式比cos方式较好，cos=pi/2时，会出现学习率为0情况。
     #------------------------------------------------------------------#
     lr_decay_type       = 'step'
-    # lr_decay_type       = 'cos'  #第一次rest50使用
     #------------------------------------------------------------------#
     #   save_period     多少个epoch保存一次权值
     #------------------------------------------------------------------#
@@ -201,7 +207,8 @@ if __name__ == "__main__":
     #------------------------------------------------------------------#
     #   save_dir        权值与日志文件保存的文件夹
     #------------------------------------------------------------------#
-    save_dir            = 'faster-rcnn-pytorch-master/logs'
+    save_dir            = r'F:\Desktop\PCB_code\faster-rcnn-pytorch-master\logs'  # 本地日志保存路径
+    # save_dir            = 'autodl-tmp/faster-rcnn-pytorch-master/logs'    #服务器上日志文件保存路径
     #------------------------------------------------------------------#
     #   eval_flag       是否在训练时进行评估，评估对象为验证集
     #                   安装pycocotools库后，评估体验更佳。
@@ -218,16 +225,18 @@ if __name__ == "__main__":
     #                   开启后会加快数据读取速度，但是会占用更多内存
     #                   在IO为瓶颈的时候再开启多线程，即GPU运算速度远大于读取图片的速度。
     #------------------------------------------------------------------#
-    num_workers         = 2
-    # num_workers         = 24  #服务器上使用线程数
-    #----------------------------------------------------#
+    num_workers         = 1
+    # num_workers         = 14  #服务器上使用线程数
+    #----------------------------------------------
     #   获得图片路径和标签
     #----------------------------------------------------#
-    train_annotation_path   = r'PCB_DataSet\trainval.txt'
-    test_annotation_path     = r'PCB_DataSet\test.txt'
-    
+    train_annotation_path   = r'F:\Desktop\PCB_code\PCB_DataSet\trainval.txt'   #本地
+    test_annotation_path = r'F:\Desktop\PCB_code\PCB_DataSet\test.txt'
+
+    # train_annotation_path   = 'autodl-tmp/PCB_DataSet/trainval.txt'    #服务器
+    # test_annotation_path     = 'autodl-tmp/PCB_DataSet/test.txt'
     #----------------------------------------------------#
-    #   获取classes和anchor
+    #   获取classes和anchor 
     #----------------------------------------------------#
     class_names, num_classes = get_classes(classes_path)
 
@@ -238,7 +247,9 @@ if __name__ == "__main__":
     ngpus_per_node                      = len(train_gpu)
     print('Number of devices: {}'.format(ngpus_per_node))
     
+
     model = FasterRCNN(num_classes, anchor_scales = anchors_size, backbone = backbone, pretrained = pretrained)
+    # print('model:',model)
     if not pretrained:
         weights_init(model)
     if model_path != '':
@@ -303,10 +314,11 @@ if __name__ == "__main__":
     num_val     = len(val_lines)
     
     show_config(
-        classes_path = classes_path, model_path = model_path, input_shape = input_shape, \
-        Init_Epoch = Init_Epoch, Freeze_Epoch = Freeze_Epoch, UnFreeze_Epoch = UnFreeze_Epoch, Freeze_batch_size = Freeze_batch_size, Unfreeze_batch_size = Unfreeze_batch_size, Freeze_Train = Freeze_Train, \
-        Init_lr = Init_lr, Min_lr = Min_lr, optimizer_type = optimizer_type, momentum = momentum, lr_decay_type = lr_decay_type, \
-        save_period = save_period, save_dir = save_dir, num_workers = num_workers, num_train = num_train, num_val = num_val
+        Cuda=Cuda,train_gpu=train_gpu,fp16=fp16,classes_path = classes_path, model_path = model_path, input_shape = input_shape,backbone=backbone, \
+        Init_Epoch = Init_Epoch, Freeze_Epoch = Freeze_Epoch, UnFreeze_Epoch = UnFreeze_Epoch, Freeze_batch_size = Freeze_batch_size, \
+        Unfreeze_batch_size = Unfreeze_batch_size, Freeze_Train = Freeze_Train, Init_lr = Init_lr, Min_lr = Min_lr, optimizer_type = optimizer_type, \
+        momentum = momentum, lr_decay_type = lr_decay_type,save_period = save_period, save_dir = save_dir, num_workers = num_workers,
+        train_annotation_path=train_annotation_path, num_train = num_train, num_val = num_val
     )
     #---------------------------------------------------------#
     #   总训练世代指的是遍历全部数据的总次数
@@ -389,7 +401,10 @@ if __name__ == "__main__":
         gen_val         = DataLoader(val_dataset  , shuffle = True, batch_size = batch_size, num_workers = num_workers, pin_memory=True, 
                                     drop_last=True, collate_fn=frcnn_dataset_collate)
 
-        train_util      = FasterRCNNTrainer(model_train, optimizer)
+        if backbone == "resnet50_FPN":
+            train_util      = FasterRCNNTrainer_fpn(model_train, optimizer)
+        else:
+            train_util      = FasterRCNNTrainer(model_train, optimizer)
         #----------------------#
         #   记录eval的map曲线
         #----------------------#
